@@ -2,7 +2,6 @@
 import click
 import subprocess
 import sys
-import shlex
 from rich.console import Console
 from rich.prompt import Prompt
 from rich.table import Table
@@ -71,17 +70,22 @@ MODELS = {
 
 def run_ollama(model, prompt=None):
     """
-    Lanza ollama interactivo, o con un prompt inicial.
+    Lanza Ollama interactivo, o con un prompt inicial.
     """
     try:
         if prompt:
-            # Ejecuta ollama run con texto directo (modo no interactivo)
-            subprocess.run(["ollama", "run", model], input=prompt.encode())
+            subprocess.run(
+                ["ollama", "run", model],
+                input=prompt.encode(),
+                check=True
+            )
         else:
-            # Modo interactivo normal
-            subprocess.run(["ollama", "run", model])
+            subprocess.run(["ollama", "run", model], check=True)
     except FileNotFoundError:
-        console.print("[red]Error: ollama no está instalado o no está en el PATH.[/red]")
+        console.print("[red]Error: Ollama no está instalado o no está en el PATH.[/red]")
+        sys.exit(1)
+    except subprocess.CalledProcessError as e:
+        console.print(f"[red]Error ejecutando Ollama: {e}[/red]")
         sys.exit(1)
 
 def print_menu():
@@ -104,17 +108,19 @@ def print_menu():
 # ===========================
 
 @click.group(invoke_without_command=True)
+@click.option("--model", type=click.Choice(["dev", "chat"]), help="Selecciona el modelo para prompt directo")
 @click.argument("prompt", required=False)
 @click.pass_context
-def cli(ctx, prompt):
+def cli(ctx, model, prompt):
     """
     Entrada principal. Si se pasa un prompt directo, entra en modo rápido.
     """
     console.print(f"[bold blue]{LOGO_MINIMAL}[/bold blue]")
 
     if prompt:
-        console.print(f"[bold green]Prompt directo detectado:[/bold green] {prompt}")
-        ctx.invoke(chat, prompt=prompt)
+        target = model or "chat"
+        console.print(f"[bold green]Prompt directo detectado para {target}:[/bold green] {prompt}")
+        ctx.invoke(chat if target=="chat" else dev, prompt=prompt)
         return
 
     if ctx.invoked_subcommand is None:
@@ -126,8 +132,11 @@ def cli(ctx, prompt):
         elif choice == "2":
             ctx.invoke(chat)
         else:
-            console.print("[yellow]Saliendo...[/yellow]")
-            sys.exit(0)
+            if Prompt.ask("¿Seguro que quieres salir?", choices=["y","n"]) == "y":
+                console.print("[yellow]Saliendo...[/yellow]")
+                sys.exit(0)
+            else:
+                cli()  # vuelve al menú
 
 # ===========================
 #  SUBCOMANDOS
