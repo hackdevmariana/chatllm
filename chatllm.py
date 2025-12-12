@@ -11,19 +11,40 @@ from rich import box
 console = Console()
 
 # ===========================
-#  BANNERS ASCII
+#  LOGO MINIMALISTA PRINCIPAL
+# ===========================
+
+LOGO_MINIMAL = r"""
+       .__            __  .__  .__           
+  ____ |  |__ _____ _/  |_|  | |  |   _____  
+_/ ___\|  |  \\__  \\   __\  | |  |  /     \ 
+\  \___|   Y  \/ __ \|  | |  |_|  |_|  Y Y  \
+ \___  >___|  (____  /__| |____/____/__|_|  /
+     \/     \/     \/                     \/ 
+"""
+
+# ===========================
+#  BANNERS POR MODELO
 # ===========================
 
 BANNERS = {
-    "dev": """
-╔══════════════════════════════════════╗
-║     🚀  QWEN CODER - DEV MODE        ║
-╚══════════════════════════════════════╝
+    "dev": r"""
+      _           _   _ _                 _            
+     | |         | | | | |               | |           
+  ___| |__   __ _| |_| | |_ __ ___     __| | _____   __
+ / __| '_ \ / _` | __| | | '_ ` _ \   / _` |/ _ \ \ / /
+| (__| | | | (_| | |_| | | | | | | | (_| |  __/\ V / 
+ \___|_| |_|\__,_|\__|_|_|_| |_| |_|  \__,_|\___| \_/  
 """,
-    "chat": """
-╔══════════════════════════════════════╗
-║     💬   LLAMA 3 - GENERAL CHAT      ║
-╚══════════════════════════════════════╝
+    "chat": r"""
+      _           _   _ _                                             _ 
+     | |         | | | | |                                           | |
+  ___| |__   __ _| |_| | |_ __ ___     __ _  ___ _ __   ___ _ __ __ _| |
+ / __| '_ \ / _` | __| | | '_ ` _ \   / _` |/ _ \ '_ \ / _ \ '__/ _` | |
+| (__| | | | (_| | |_| | | | | | | | (_| |  __/ | | |  __/ | | (_| | |
+ \___|_| |_|\__,_|\__|_|_|_| |_| |_|  \__, |\___|_| |_|\___|_|  \__,_|_|
+                                       __/ |                            
+                                      |___/                             
 """
 }
 
@@ -44,7 +65,6 @@ MODELS = {
     }
 }
 
-
 # ===========================
 #  FUNCIONES
 # ===========================
@@ -64,7 +84,6 @@ def run_ollama(model, prompt=None):
         console.print("[red]Error: ollama no está instalado o no está en el PATH.[/red]")
         sys.exit(1)
 
-
 def print_menu():
     table = Table(
         title="chatllm — menú principal",
@@ -80,7 +99,6 @@ def print_menu():
 
     console.print(table)
 
-
 # ===========================
 #  CLI PRINCIPAL
 # ===========================
@@ -92,15 +110,15 @@ def cli(ctx, prompt):
     """
     Entrada principal. Si se pasa un prompt directo, entra en modo rápido.
     """
+    console.print(f"[bold blue]{LOGO_MINIMAL}[/bold blue]")
+
     if prompt:
         console.print(f"[bold green]Prompt directo detectado:[/bold green] {prompt}")
         ctx.invoke(chat, prompt=prompt)
         return
 
     if ctx.invoked_subcommand is None:
-        console.print("\n[bold magenta]=== chatllm ===[/bold magenta]\n")
         print_menu()
-
         choice = Prompt.ask("Selecciona una opción", choices=["1", "2", "3"])
 
         if choice == "1":
@@ -110,7 +128,6 @@ def cli(ctx, prompt):
         else:
             console.print("[yellow]Saliendo...[/yellow]")
             sys.exit(0)
-
 
 # ===========================
 #  SUBCOMANDOS
@@ -122,9 +139,7 @@ def dev(prompt):
     """Modo desarrollo (Qwen Coder)."""
     m = MODELS["dev"]
     console.print(f"[bold {m['color']}] {BANNERS['dev']} [/bold {m['color']}]")
-
     run_ollama(m["model"], prompt=prompt)
-
 
 @cli.command()
 @click.argument("prompt", required=False)
@@ -132,6 +147,8 @@ def chat(prompt):
     """Modo chat general (Llama 3)."""
     m = MODELS["chat"]
     console.print(f"[bold {m['color']}] {BANNERS['chat']} [/bold {m['color']}]")
-
     run_ollama(m["model"], prompt=prompt)
+
+if __name__ == "__main__":
+    cli()
 
