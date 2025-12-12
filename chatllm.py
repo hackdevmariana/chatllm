@@ -2,11 +2,11 @@
 import click
 import subprocess
 import sys
-import re
 from rich.console import Console
-from rich.prompt import Prompt
+from rich.prompt import Prompt, Confirm
 from rich.table import Table
 from rich import box
+import re
 
 console = Console()
 
@@ -18,8 +18,8 @@ LOGO_MINIMAL = r"""
   ____ |  |__ _____ _/  |_|  | |  |   _____  
 _/ ___\|  |  \\__  \\   __\  | |  |  /     \ 
 \  \___|   Y  \/ __ \|  | |  |_|  |_|  Y Y  \
- \___| >___|  (____  /__| |____/____/__|_|  /
-     \/     \/     \/                     \/ 
+ \___  >___|  (____  /__| |____/____/__|_|  /
+     \/     \/                     \/ 
 """
 
 # ===========================
@@ -50,26 +50,17 @@ BANNERS = {
 #  MODELOS DISPONIBLES
 # ===========================
 MODELS = {
-    "dev": {
-        "name": "Qwen 2.5 Coder",
-        "model": "qwen2.5-coder:7b",
-        "color": "cyan"
-    },
-    "chat": {
-        "name": "Llama 3",
-        "model": "llama3:latest",
-        "color": "green"
-    }
+    "dev": {"name": "Qwen 2.5 Coder", "model": "qwen2.5-coder:7b", "color": "cyan"},
+    "chat": {"name": "Llama 3", "model": "llama3:latest", "color": "green"},
 }
 
 # ===========================
 #  FUNCIONES
 # ===========================
-def run_ollama(model, prompt=None, raw=False, output=None, show_banner=True):
+def run_ollama(model, prompt=None):
     """
-    Lanza Ollama y captura la salida.
-    Si raw=True, devuelve solo el primer bloque de código.
-    Si output se indica, guarda la salida en el fichero indicado.
+    Lanza ollama interactivo o con prompt.
+    Devuelve la salida como string.
     """
     try:
         if prompt:
@@ -77,104 +68,124 @@ def run_ollama(model, prompt=None, raw=False, output=None, show_banner=True):
                 ["ollama", "run", model],
                 input=prompt.encode(),
                 stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE
+                stderr=subprocess.PIPE,
             )
-            output_text = result.stdout.decode()
-
-            if raw:
-                match = re.search(r"```(?:\w+)?\n(.*?)```", output_text, re.DOTALL)
-                if match:
-                    output_text = match.group(1).strip()
-
-            if output:
-                with open(output, "w") as f:
-                    f.write(output_text)
-            else:
-                if show_banner:
-                    console.print(output_text)
-                else:
-                    # Si no queremos banner, imprimimos plano
-                    print(output_text)
+            return result.stdout.decode()
         else:
             subprocess.run(["ollama", "run", model])
+            return ""
     except FileNotFoundError:
         console.print("[red]Error: ollama no está instalado o no está en el PATH.[/red]")
         sys.exit(1)
 
+def extract_code_block(text):
+    """
+    Extrae el primer bloque de código entre ```...```
+    Devuelve solo el contenido dentro del bloque.
+    """
+    match = re.search(r"```(?:\w+)?\n(.*?)```", text, re.DOTALL)
+    if match:
+        return match.group(1).strip()
+    return text.strip()
+
 def print_menu():
-    table = Table(
-        title="chatllm — menú principal",
-        box=box.ROUNDED,
-        header_style="bold magenta"
-    )
+    table = Table(title="chatllm — menú principal", box=box.ROUNDED, header_style="bold magenta")
     table.add_column("Opción", style="bold cyan")
     table.add_column("Descripción")
-
     table.add_row("1", "Desarrollo (Qwen Coder)")
     table.add_row("2", "Chat general (Llama 3)")
     table.add_row("3", "Salir")
-
     console.print(table)
+
+def interactive_options():
+    raw_opt = Confirm.ask("¿Quieres devolver solo el bloque de código (raw)?", default=False)
+    save_opt = Confirm.ask("¿Quieres guardar la salida en un fichero?", default=False)
+    filename = None
+    if save_opt:
+        filename = Prompt.ask("Nombre del fichero")
+    return raw_opt, save_opt, filename
 
 # ===========================
 #  CLI PRINCIPAL
 # ===========================
 @click.group(invoke_without_command=True)
 @click.argument("prompt", required=False)
-@click.option("--model", type=click.Choice(["dev", "chat"]), help="Selecciona el modelo")
-@click.option("--raw", is_flag=True, help="Devuelve solo el bloque de código")
-@click.option("--output", type=click.Path(), help="Guardar salida en fichero")
+@click.option("--model", type=click.Choice(["dev", "chat"]), default=None, help="Selecciona el modelo")
+@click.option("--raw", is_flag=True, help="Devuelve solo bloque de código")
+@click.option("--output", type=str, help="Guardar la salida en un fichero")
 @click.pass_context
 def cli(ctx, prompt, model, raw, output):
-    """
-    Entrada principal. Si se pasa un prompt directo, entra en modo rápido.
-    """
-    if not raw:
-        console.print(f"[bold blue]{LOGO_MINIMAL}[/bold blue]")
+    console.print(f"[bold blue]{LOGO_MINIMAL}[/bold blue]")
 
     if prompt and model:
+        # prompt directo desde línea de comandos
         m = MODELS[model]
-        if not raw:
-            console.print(f"[bold {m['color']}]Prompt directo detectado para {model}[/bold {m['color']}]")
-        run_ollama(m["model"], prompt=prompt, raw=raw, output=output, show_banner=not raw)
+        text = run_ollama(m["model"], prompt)
+        if raw:
+            text = extract_code_block(text)
+        if output:
+            with open(output, "w") as f:
+                f.write(text)
+            console.print(f"[green]Salida guardada en {output}[/green]")
+        else:
+            console.print(text)
         return
 
     if ctx.invoked_subcommand is None:
+        # Menú interactivo
         print_menu()
-        choice = Prompt.ask("Selecciona una opción", choices=["1", "2", "3"])
-
-        if choice == "1":
-            ctx.invoke(dev, raw=raw, output=output)
-        elif choice == "2":
-            ctx.invoke(chat, raw=raw, output=output)
-        else:
+        choice = Prompt.ask("Selecciona una opción", choices=["1","2","3"])
+        if choice == "3":
             console.print("[yellow]Saliendo...[/yellow]")
             sys.exit(0)
+
+        raw_opt, save_opt, filename = interactive_options()
+        prompt_text = Prompt.ask(">>> Dime el código o pregunta")
+
+        if choice == "1":
+            ctx.invoke(dev, prompt=prompt_text, raw=raw_opt, output=filename)
+        else:
+            ctx.invoke(chat, prompt=prompt_text, raw=raw_opt, output=filename)
 
 # ===========================
 #  SUBCOMANDOS
 # ===========================
-@cli.command()
+@click.command()
 @click.argument("prompt", required=False)
-@click.option("--raw", is_flag=True, help="Devuelve solo el bloque de código")
-@click.option("--output", type=click.Path(), help="Guardar salida en fichero")
+@click.option("--raw", is_flag=True, help="Devuelve solo bloque de código")
+@click.option("--output", type=str, help="Guardar la salida en un fichero")
 def dev(prompt, raw, output):
-    """Modo desarrollo (Qwen Coder)."""
     m = MODELS["dev"]
-    if not raw:
-        console.print(f"[bold {m['color']}] {BANNERS['dev']} [/bold {m['color']}]")
-    run_ollama(m["model"], prompt=prompt, raw=raw, output=output, show_banner=not raw)
+    console.print(f"[bold {m['color']}] {BANNERS['dev']} [/bold {m['color']}]")
+    text = run_ollama(m["model"], prompt)
+    if raw:
+        text = extract_code_block(text)
+    if output:
+        with open(output, "w") as f:
+            f.write(text)
+        console.print(f"[green]Salida guardada en {output}[/green]")
+    else:
+        console.print(text)
 
-@cli.command()
+@click.command()
 @click.argument("prompt", required=False)
-@click.option("--raw", is_flag=True, help="Devuelve solo el bloque de código")
-@click.option("--output", type=click.Path(), help="Guardar salida en fichero")
+@click.option("--raw", is_flag=True, help="Devuelve solo bloque de código")
+@click.option("--output", type=str, help="Guardar la salida en un fichero")
 def chat(prompt, raw, output):
-    """Modo chat general (Llama 3)."""
     m = MODELS["chat"]
-    if not raw:
-        console.print(f"[bold {m['color']}] {BANNERS['chat']} [/bold {m['color']}]")
-    run_ollama(m["model"], prompt=prompt, raw=raw, output=output, show_banner=not raw)
+    console.print(f"[bold {m['color']}] {BANNERS['chat']} [/bold {m['color']}]")
+    text = run_ollama(m["model"], prompt)
+    if raw:
+        text = extract_code_block(text)
+    if output:
+        with open(output, "w") as f:
+            f.write(text)
+        console.print(f"[green]Salida guardada en {output}[/green]")
+    else:
+        console.print(text)
+
+cli.add_command(dev)
+cli.add_command(chat)
 
 if __name__ == "__main__":
     cli()
