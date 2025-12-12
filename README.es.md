@@ -74,10 +74,32 @@ chatllm "Háblame de las f-strings en Python"
 chatllm dev "Genera una función en Python que lea un archivo CSV"
 ```
 
+### Prompt directo con salida en bruto
+
+Devuelve únicamente el bloque de código, listo para copiar o redirigir:
+
+```
+chatllm --model dev --raw "Escribe un script en Python que muestre 'Hola Mundo'"
+```
+
+Ejemplo de redirección a un fichero:
+
+```
+chatllm --model dev --raw "Escribe un script en Python que muestre 'Hola Mundo'" > hola.py
+```
+
+### Opciones interactivas en el menú
+
+Al usar el menú, puedes elegir:
+
+- Devolver únicamente el bloque de código (raw)
+- Guardar la salida directamente en un fichero y proporcionar el nombre
+
 ## Desinstalación
 
 ```
 pipx uninstall chatllm
 ```
+
 
 
