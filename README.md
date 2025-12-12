@@ -76,6 +76,27 @@ chatllm "Explain async in Python"
 chatllm dev "Write a function that parses a CSV file"
 ```
 
+### Direct prompt with raw output
+
+Returns only the code block, ready to copy or redirect:
+
+```
+chatllm --model dev --raw "Write a Python script that prints 'Hello World'"
+```
+
+Example redirect to file:
+
+```
+chatllm --model dev --raw "Write a Python script that prints 'Hello World'" > hello.py
+```
+
+### Interactive options in the menu
+
+When using the menu, you can choose:
+
+- Whether to return only the raw code block
+- Whether to save the output directly to a file and provide the filename
+
 ## Uninstall
 
 ```
