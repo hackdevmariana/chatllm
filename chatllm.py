@@ -2,6 +2,7 @@
 import click
 import subprocess
 import sys
+import re
 from rich.console import Console
 from rich.prompt import Prompt
 from rich.table import Table
@@ -17,7 +18,7 @@ LOGO_MINIMAL = r"""
   ____ |  |__ _____ _/  |_|  | |  |   _____  
 _/ ___\|  |  \\__  \\   __\  | |  |  /     \ 
 \  \___|   Y  \/ __ \|  | |  |_|  |_|  Y Y  \
- \___  >___|  (____  /__| |____/____/__|_|  /
+ \___| >___|  (____  /__| |____/____/__|_|  /
      \/     \/     \/                     \/ 
 """
 
@@ -38,7 +39,7 @@ BANNERS = {
      | |         | | | | |                                           | |
   ___| |__   __ _| |_| | |_ __ ___     __ _  ___ _ __   ___ _ __ __ _| |
  / __| '_ \ / _` | __| | | '_ ` _ \   / _` |/ _ \ '_ \ / _ \ '__/ _` | |
-| (__| | | | (_| | |_| | | | | | | | | (_| |  __/ | | |  __/ | | (_| | |
+| (__| | | | (_| | |_| | | | | | | | (_| |  __/ | | |  __/ | | (_| | |
  \___|_| |_|\__,_|\__|_|_|_| |_| |_|  \__, |\___|_| |_|\___|_|  \__,_|_|
                                        __/ |                            
                                       |___/                             
@@ -64,25 +65,36 @@ MODELS = {
 # ===========================
 #  FUNCIONES
 # ===========================
-def run_ollama(model, prompt=None, raw=False):
+def run_ollama(model, prompt=None, raw=False, output=None, show_banner=True):
     """
-    Lanza ollama interactivo, o con un prompt inicial.
-    Si raw=True, imprime solo el texto devuelto.
+    Lanza Ollama y captura la salida.
+    Si raw=True, devuelve solo el primer bloque de código.
+    Si output se indica, guarda la salida en el fichero indicado.
     """
     try:
         if prompt:
+            result = subprocess.run(
+                ["ollama", "run", model],
+                input=prompt.encode(),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE
+            )
+            output_text = result.stdout.decode()
+
             if raw:
-                # Ejecuta y captura la salida para devolver solo texto
-                result = subprocess.run(
-                    ["ollama", "run", model],
-                    input=prompt.encode(),
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE
-                )
-                output = result.stdout.decode()
-                console.print(output)
+                match = re.search(r"```(?:\w+)?\n(.*?)```", output_text, re.DOTALL)
+                if match:
+                    output_text = match.group(1).strip()
+
+            if output:
+                with open(output, "w") as f:
+                    f.write(output_text)
             else:
-                subprocess.run(["ollama", "run", model], input=prompt.encode())
+                if show_banner:
+                    console.print(output_text)
+                else:
+                    # Si no queremos banner, imprimimos plano
+                    print(output_text)
         else:
             subprocess.run(["ollama", "run", model])
     except FileNotFoundError:
@@ -108,30 +120,33 @@ def print_menu():
 #  CLI PRINCIPAL
 # ===========================
 @click.group(invoke_without_command=True)
-@click.option("--model", type=click.Choice(["dev", "chat"]), help="Selecciona el modelo a usar")
-@click.option("--raw", is_flag=True, help="Devuelve solo el código o texto, sin banners")
 @click.argument("prompt", required=False)
+@click.option("--model", type=click.Choice(["dev", "chat"]), help="Selecciona el modelo")
+@click.option("--raw", is_flag=True, help="Devuelve solo el bloque de código")
+@click.option("--output", type=click.Path(), help="Guardar salida en fichero")
 @click.pass_context
-def cli(ctx, model, raw, prompt):
+def cli(ctx, prompt, model, raw, output):
     """
-    Entrada principal. Si se pasa un prompt directo y un modelo, entra en modo rápido.
+    Entrada principal. Si se pasa un prompt directo, entra en modo rápido.
     """
-    console.print(f"[bold blue]{LOGO_MINIMAL}[/bold blue]")
+    if not raw:
+        console.print(f"[bold blue]{LOGO_MINIMAL}[/bold blue]")
 
-    if model and prompt:
-        if model == "dev":
-            ctx.invoke(dev, prompt=prompt, raw=raw)
-        else:
-            ctx.invoke(chat, prompt=prompt, raw=raw)
+    if prompt and model:
+        m = MODELS[model]
+        if not raw:
+            console.print(f"[bold {m['color']}]Prompt directo detectado para {model}[/bold {m['color']}]")
+        run_ollama(m["model"], prompt=prompt, raw=raw, output=output, show_banner=not raw)
         return
 
     if ctx.invoked_subcommand is None:
         print_menu()
         choice = Prompt.ask("Selecciona una opción", choices=["1", "2", "3"])
+
         if choice == "1":
-            ctx.invoke(dev, raw=raw)
+            ctx.invoke(dev, raw=raw, output=output)
         elif choice == "2":
-            ctx.invoke(chat, raw=raw)
+            ctx.invoke(chat, raw=raw, output=output)
         else:
             console.print("[yellow]Saliendo...[/yellow]")
             sys.exit(0)
@@ -139,31 +154,27 @@ def cli(ctx, model, raw, prompt):
 # ===========================
 #  SUBCOMANDOS
 # ===========================
-@click.command()
+@cli.command()
 @click.argument("prompt", required=False)
-@click.option("--raw", is_flag=True, help="Devuelve solo el código o texto, sin banners")
-def dev(prompt, raw):
+@click.option("--raw", is_flag=True, help="Devuelve solo el bloque de código")
+@click.option("--output", type=click.Path(), help="Guardar salida en fichero")
+def dev(prompt, raw, output):
     """Modo desarrollo (Qwen Coder)."""
     m = MODELS["dev"]
     if not raw:
         console.print(f"[bold {m['color']}] {BANNERS['dev']} [/bold {m['color']}]")
-    run_ollama(m["model"], prompt=prompt, raw=raw)
+    run_ollama(m["model"], prompt=prompt, raw=raw, output=output, show_banner=not raw)
 
-@click.command()
+@cli.command()
 @click.argument("prompt", required=False)
-@click.option("--raw", is_flag=True, help="Devuelve solo el código o texto, sin banners")
-def chat(prompt, raw):
+@click.option("--raw", is_flag=True, help="Devuelve solo el bloque de código")
+@click.option("--output", type=click.Path(), help="Guardar salida en fichero")
+def chat(prompt, raw, output):
     """Modo chat general (Llama 3)."""
     m = MODELS["chat"]
     if not raw:
         console.print(f"[bold {m['color']}] {BANNERS['chat']} [/bold {m['color']}]")
-    run_ollama(m["model"], prompt=prompt, raw=raw)
-
-# ===========================
-#  REGISTRAR SUBCOMANDOS
-# ===========================
-cli.add_command(dev)
-cli.add_command(chat)
+    run_ollama(m["model"], prompt=prompt, raw=raw, output=output, show_banner=not raw)
 
 if __name__ == "__main__":
     cli()
