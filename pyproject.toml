@@ -1,9 +1,12 @@
 [project]
 name = "chatllm"
 version = "0.1.0"
-description = "CLI para Ollama con menús, prompts y colores"
+description = "CLI for local Ollama models"
 dependencies = ["click", "rich"]
 
 [project.scripts]
-chatllm = "chatllm:cli"
+chatllm = "chatllm.cli:cli"
+
+[tool.setuptools]
+packages = ["chatllm"]
 
