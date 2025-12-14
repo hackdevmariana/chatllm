@@ -3,10 +3,11 @@ from rich.console import Console
 from rich.prompt import Prompt
 
 from .common import (
-    load_history,
-    append_message,
-    clear_history,
     run_ollama,
+    append_message,
+    load_history,
+    clear_history,
+    list_sessions,
 )
 
 console = Console()
@@ -14,29 +15,59 @@ console = Console()
 MODEL = "llama3:latest"
 MODE = "chat"
 
-@click.command()
-@click.option("--clear", is_flag=True, help="Borrar historial")
-def chat(clear):
-    if clear:
-        clear_history(MODE)
-        console.print("[green]Historial borrado[/green]")
-        return
 
-    console.print("[bold green]Chat general (historial persistente)[/bold green]")
-    history = load_history(MODE)
+@click.command()
+def chat():
+    session = "default"
+    console.print(f"[bold green]Chat mode — session: {session}[/bold green]\n")
 
     while True:
-        try:
-            user_input = Prompt.ask(">>>")
-        except (EOFError, KeyboardInterrupt):
-            console.print("\n[yellow]Saliendo[/yellow]")
-            break
+        user_input = Prompt.ask(">>>")
 
-        append_message(MODE, "user", user_input)
-        history = load_history(MODE)
+        # -------- comandos internos --------
+        if user_input.startswith("/"):
+            parts = user_input.split()
+            cmd = parts[0]
+
+            if cmd == "/exit":
+                break
+
+            elif cmd == "/history":
+                history = load_history(MODE, session)
+                for m in history:
+                    console.print(f"[bold]{m['role']}:[/bold] {m['content']}")
+                continue
+
+            elif cmd == "/clear":
+                clear_history(MODE, session)
+                console.print("[yellow]History cleared[/yellow]")
+                continue
+
+            elif cmd == "/sessions":
+                sessions = list_sessions(MODE)
+                console.print("Sessions:", ", ".join(sessions))
+                continue
+
+            elif cmd == "/new" and len(parts) > 1:
+                session = parts[1]
+                console.print(f"[green]New session: {session}[/green]")
+                continue
+
+            elif cmd == "/switch" and len(parts) > 1:
+                session = parts[1]
+                console.print(f"[green]Switched to session: {session}[/green]")
+                continue
+
+            else:
+                console.print("[red]Unknown command[/red]")
+                continue
+
+        # -------- mensaje normal --------
+        append_message(MODE, session, "user", user_input)
+        history = load_history(MODE, session)
 
         response = run_ollama(MODEL, history)
-        console.print(response)
 
-        append_message(MODE, "assistant", response)
+        append_message(MODE, session, "assistant", response)
+        console.print(response)
 
