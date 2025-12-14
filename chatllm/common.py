@@ -1,73 +1,58 @@
 import json
 import subprocess
 from pathlib import Path
-from typing import List, Dict
 
-# ===========================
-#  RUTAS Y DIRECTORIOS
-# ===========================
-
-DATA_DIR = Path.home() / ".local" / "share" / "chatllm"
-DATA_DIR.mkdir(parents=True, exist_ok=True)
-
-# ===========================
-#  HISTORIAL
-# ===========================
-
-def history_file(mode: str) -> Path:
-    """
-    Devuelve la ruta del fichero de historial para un modo dado.
-    """
-    return DATA_DIR / f"{mode}_history.json"
+BASE_DIR = Path.home() / ".local" / "share" / "chatllm"
+BASE_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def load_history(mode: str) -> List[Dict[str, str]]:
-    """
-    Carga el historial desde disco.
-    """
-    file = history_file(mode)
+# ---------- sesiones ----------
+
+def session_dir(mode: str) -> Path:
+    d = BASE_DIR / mode
+    d.mkdir(exist_ok=True)
+    return d
+
+
+def session_file(mode: str, session: str) -> Path:
+    return session_dir(mode) / f"{session}.json"
+
+
+def list_sessions(mode: str) -> list[str]:
+    return [f.stem for f in session_dir(mode).glob("*.json")]
+
+
+# ---------- historial ----------
+
+def load_history(mode: str, session: str) -> list[dict]:
+    file = session_file(mode, session)
     if not file.exists():
         return []
-
     try:
-        return json.loads(file.read_text(encoding="utf-8"))
+        return json.loads(file.read_text())
     except json.JSONDecodeError:
         return []
 
 
-def save_history(mode: str, history: List[Dict[str, str]]) -> None:
-    """
-    Guarda el historial en disco.
-    """
-    history_file(mode).write_text(
-        json.dumps(history, indent=2, ensure_ascii=False),
-        encoding="utf-8",
+def save_history(mode: str, session: str, history: list[dict]) -> None:
+    session_file(mode, session).write_text(
+        json.dumps(history, indent=2, ensure_ascii=False)
     )
 
 
-def append_message(mode: str, role: str, content: str) -> None:
-    """
-    Añade un mensaje al historial.
-    """
-    history = load_history(mode)
+def append_message(mode: str, session: str, role: str, content: str) -> None:
+    history = load_history(mode, session)
     history.append({"role": role, "content": content})
-    save_history(mode, history)
+    save_history(mode, session, history)
 
 
-def clear_history(mode: str) -> None:
-    """
-    Borra el historial.
-    """
-    history_file(mode).unlink(missing_ok=True)
+def clear_history(mode: str, session: str) -> None:
+    session_file(mode, session).unlink(missing_ok=True)
 
-# ===========================
-#  OLLAMA
-# ===========================
 
-def run_ollama(model: str, messages: List[Dict[str, str]]) -> str:
-    """
-    Ejecuta Ollama con contexto (historial).
-    """
+# ---------- ejecución ollama ----------
+
+def run_ollama(model: str, messages: list[dict]) -> str:
     prompt = "\n".join(
         f"{m['role'].capitalize()}: {m['content']}"
         for m in messages
@@ -75,10 +60,10 @@ def run_ollama(model: str, messages: List[Dict[str, str]]) -> str:
 
     result = subprocess.run(
         ["ollama", "run", model],
-        input=prompt.encode("utf-8"),
+        input=prompt.encode(),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
 
-    return result.stdout.decode("utf-8").strip()
+    return result.stdout.decode().strip()
 
