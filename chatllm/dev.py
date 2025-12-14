@@ -1,30 +1,44 @@
 import click
-from .common import MODELS, BANNERS, run_ollama, extract_code_block, console
+from rich.console import Console
+from rich.prompt import Prompt, Confirm
+
+from .common import (
+    run_ollama,
+    append_message,
+    load_history,
+)
+
+console = Console()
+
+MODEL = "qwen2.5-coder:7b"
+MODE = "dev"
 
 
 @click.command()
 @click.argument("prompt", required=False)
-@click.option("--raw", is_flag=True, help="Return only code block")
-@click.option("--output", type=str, help="Save output to file")
-def dev(prompt, raw, output):
-    """Development mode (code generation)."""
-    m = MODELS["dev"]
+@click.option("--history", is_flag=True, help="Usar historial persistente")
+@click.option("--clear-history", is_flag=True)
+def dev(prompt, history, clear_history_flag):
+    MODE = "dev"
+    MODEL = "qwen2.5-coder:7b"
 
-    console.print(f"[bold {m['color']}]{BANNERS['dev']}[/bold {m['color']}]")
+    if clear_history_flag:
+        clear_history(MODE)
+        console.print("[green]Historial borrado[/green]")
+        return
 
-    if not prompt:
-        prompt = click.prompt(">>> Describe the code you want")
+    messages = []
 
-    text = run_ollama(m["model"], prompt)
+    if history:
+        messages = load_history(MODE)
 
-    if raw:
-        text = extract_code_block(text)
+    if prompt:
+        messages.append({"role": "user", "content": prompt})
 
-    if output:
-        with open(output, "w") as f:
-            f.write(text)
-        console.print(f"[green]Saved to {output}[/green]")
-    else:
-        console.print(text)
+    response = run_ollama(MODEL, messages)
+    console.print(response)
 
+    if history:
+        append_message(MODE, "user", prompt)
+        append_message(MODE, "assistant", response)
 
