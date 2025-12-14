@@ -1,66 +1,84 @@
+import json
 import subprocess
-import sys
-import re
-from rich.console import Console
+from pathlib import Path
+from typing import List, Dict
 
-console = Console()
+# ===========================
+#  RUTAS Y DIRECTORIOS
+# ===========================
 
-MODELS = {
-    "dev": {
-        "name": "Qwen 2.5 Coder",
-        "model": "qwen2.5-coder:7b",
-        "color": "cyan",
-    },
-    "chat": {
-        "name": "Llama 3",
-        "model": "llama3:latest",
-        "color": "green",
-    },
-}
+DATA_DIR = Path.home() / ".local" / "share" / "chatllm"
+DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-BANNERS = {
-    "dev": r"""
-      _           _   _ _                 _            
-     | |         | | | | |               | |           
-  ___| |__   __ _| |_| | |_ __ ___     __| | _____   __
- / __| '_ \ / _` | __| | | '_ ` _ \   / _` |/ _ \ \ / /
-| (__| | | | (_| | |_| | | | | | | | (_| |  __/\ V / 
- \___|_| |_|\__,_|\__|_|_|_| |_| |_|  \__,_|\___| \_/  
-""",
-    "chat": r"""
-      _           _   _ _                                             _ 
-     | |         | | | | |                                           | |
-  ___| |__   __ _| |_| | |_ __ ___     __ _  ___ _ __   ___ _ __ __ _| |
- / __| '_ \ / _` | __| | | '_ ` _ \   / _` |/ _ \ '_ \ / _ \ '__/ _` | |
-| (__| | | | (_| | |_| | | | | | | | (_| |  __/ | | |  __/ | | (_| | |
- \___|_| |_|\__,_|\__|_|_|_| |_| |_|  \__, |\___|_| |_|\___|_|  \__,_|_|
-                                       __/ |                            
-                                      |___/                             
-""",
-}
+# ===========================
+#  HISTORIAL
+# ===========================
+
+def history_file(mode: str) -> Path:
+    """
+    Devuelve la ruta del fichero de historial para un modo dado.
+    """
+    return DATA_DIR / f"{mode}_history.json"
 
 
-def run_ollama(model, prompt=None):
+def load_history(mode: str) -> List[Dict[str, str]]:
+    """
+    Carga el historial desde disco.
+    """
+    file = history_file(mode)
+    if not file.exists():
+        return []
+
     try:
-        if prompt:
-            result = subprocess.run(
-                ["ollama", "run", model],
-                input=prompt.encode(),
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-            )
-            return result.stdout.decode()
-        else:
-            subprocess.run(["ollama", "run", model])
-            return ""
-    except FileNotFoundError:
-        console.print("[red]Error: ollama not found in PATH[/red]")
-        sys.exit(1)
+        return json.loads(file.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return []
 
 
-def extract_code_block(text):
-    match = re.search(r"```(?:\w+)?\n(.*?)```", text, re.DOTALL)
-    if match:
-        return match.group(1).strip()
-    return text.strip()
+def save_history(mode: str, history: List[Dict[str, str]]) -> None:
+    """
+    Guarda el historial en disco.
+    """
+    history_file(mode).write_text(
+        json.dumps(history, indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+
+def append_message(mode: str, role: str, content: str) -> None:
+    """
+    Añade un mensaje al historial.
+    """
+    history = load_history(mode)
+    history.append({"role": role, "content": content})
+    save_history(mode, history)
+
+
+def clear_history(mode: str) -> None:
+    """
+    Borra el historial.
+    """
+    history_file(mode).unlink(missing_ok=True)
+
+# ===========================
+#  OLLAMA
+# ===========================
+
+def run_ollama(model: str, messages: List[Dict[str, str]]) -> str:
+    """
+    Ejecuta Ollama con contexto (historial).
+    """
+    prompt = "\n".join(
+        f"{m['role'].capitalize()}: {m['content']}"
+        for m in messages
+    ) + "\nAssistant:"
+
+    result = subprocess.run(
+        ["ollama", "run", model],
+        input=prompt.encode("utf-8"),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+    return result.stdout.decode("utf-8").strip()
 
